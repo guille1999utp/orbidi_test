@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth-context";
 import { apiFetch, downloadAttachment } from "@/lib/api";
 import type { Attachment, Comment, Ticket, UserBrief } from "@/lib/types";
 import { PRIORITY_LABELS, STATE_LABELS } from "@/lib/types";
+import { UserAvatar, UserBadge } from "@/components/UserBadge";
+import { AssigneePicker } from "@/components/AssigneePicker";
 
 export default function TicketDetailPage() {
   const params = useParams();
@@ -146,29 +148,30 @@ export default function TicketDetailPage() {
           ← Tablero
         </Link>
         <h1 className="mt-4 text-2xl font-semibold text-white">{ticket.title}</h1>
-        <div className="mt-2 flex flex-wrap gap-2 text-sm text-zinc-400">
+        <div className="mt-3 flex flex-wrap gap-3 text-sm text-zinc-400">
           <span>{STATE_LABELS[ticket.state]}</span>
-          <span>·</span>
+          <span className="text-zinc-600">·</span>
           <span>{PRIORITY_LABELS[ticket.priority]}</span>
-          <span>·</span>
-          <span>Autor: {ticket.author.name}</span>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-8 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-4">
+          <UserBadge user={ticket.author} label="Creador" size="md" />
+          <UserBadge
+            user={ticket.assignee}
+            label="Asignado"
+            size="md"
+            emptyLabel="Sin asignar"
+          />
         </div>
         <p className="mt-6 whitespace-pre-wrap text-zinc-300">{ticket.description || "Sin descripción"}</p>
 
         <section className="mt-8 border-t border-zinc-800 pt-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Reasignar</h2>
-          <select
-            className="mt-2 w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-white"
-            value={ticket.assignee_id ?? ""}
-            onChange={(e) => onReassign(e.target.value)}
-          >
-            <option value="">Sin asignar</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.email})
-              </option>
-            ))}
-          </select>
+          <AssigneePicker
+            users={users}
+            assigneeId={ticket.assignee_id}
+            assignee={ticket.assignee}
+            onAssign={onReassign}
+          />
         </section>
 
         <section className="mt-8 border-t border-zinc-800 pt-6">
@@ -177,6 +180,7 @@ export default function TicketDetailPage() {
             {comments.map((c) => (
               <li key={c.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
                 <div className="flex items-center gap-2 text-xs text-zinc-500">
+                  <UserAvatar user={c.author} size="sm" />
                   <span className="font-medium text-zinc-300">{c.author.name}</span>
                   <span>{new Date(c.created_at).toLocaleString("es")}</span>
                 </div>

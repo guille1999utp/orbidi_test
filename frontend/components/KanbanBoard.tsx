@@ -14,6 +14,7 @@ import type { Ticket, TicketState } from "@/lib/types";
 import { PRIORITY_LABELS, STATE_LABELS, STATE_ORDER } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { UserAvatar } from "@/components/UserBadge";
 import clsx from "clsx";
 
 function Card({ ticket }: { ticket: Ticket }) {
@@ -47,7 +48,30 @@ function Card({ ticket }: { ticket: Ticket }) {
           <Link href={`/tickets/${ticket.id}`} className="font-medium text-sky-400 hover:underline">
             {ticket.title}
           </Link>
-          <p className="mt-1 text-xs text-zinc-500">{PRIORITY_LABELS[ticket.priority]}</p>
+          <p className="mt-2 text-xs text-zinc-500">{PRIORITY_LABELS[ticket.priority]}</p>
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-800/80 pt-2">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-600">Creador</span>
+              <div className="flex items-center gap-1.5">
+                <UserAvatar user={ticket.author} size="xs" />
+                <span className="truncate text-[11px] text-zinc-400" title={ticket.author.name}>
+                  {ticket.author.name}
+                </span>
+              </div>
+            </div>
+            <div className="flex min-w-0 flex-col items-end gap-0.5">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-600">Asignado</span>
+              <div className="flex items-center justify-end gap-1.5">
+                <UserAvatar user={ticket.assignee} size="xs" />
+                <span
+                  className="max-w-[90px] truncate text-right text-[11px] text-zinc-400"
+                  title={ticket.assignee?.name ?? "Sin asignar"}
+                >
+                  {ticket.assignee?.name ?? "—"}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Ticket } from "@/lib/types";
 import { PRIORITY_LABELS, STATE_LABELS } from "@/lib/types";
+import { UserBadge } from "@/components/UserBadge";
 import clsx from "clsx";
 
 export function TicketTable({
@@ -37,7 +38,7 @@ export function TicketTable({
             {head("Título", "title")}
             {head("Estado", "state")}
             {head("Prioridad", "priority")}
-            <th className="px-3 py-2 text-left font-medium text-zinc-400">Autor</th>
+            <th className="px-3 py-2 text-left font-medium text-zinc-400">Creador</th>
             <th className="px-3 py-2 text-left font-medium text-zinc-400">Asignado</th>
             {head("Actualizado", "updated_at")}
           </tr>
@@ -64,8 +65,12 @@ export function TicketTable({
                   {PRIORITY_LABELS[t.priority]}
                 </span>
               </td>
-              <td className="px-3 py-2 text-zinc-400">{t.author.name}</td>
-              <td className="px-3 py-2 text-zinc-400">{t.assignee?.name ?? "—"}</td>
+              <td className="px-3 py-2 align-middle">
+                <UserBadge user={t.author} size="sm" />
+              </td>
+              <td className="px-3 py-2 align-middle">
+                <UserBadge user={t.assignee} size="sm" emptyLabel="Sin asignar" />
+              </td>
               <td className="px-3 py-2 text-zinc-500">
                 {new Date(t.updated_at).toLocaleString("es")}
               </td>
