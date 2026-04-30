@@ -19,7 +19,13 @@ from app.ws_manager import ws_manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        # Vercel y otros entornos de solo lectura: usar UPLOADS_DIR=/tmp/... en variables de entorno
+        import logging
+
+        logging.getLogger(__name__).warning("No se pudo crear uploads_dir=%s: %s", settings.uploads_dir, e)
     yield
 
 
