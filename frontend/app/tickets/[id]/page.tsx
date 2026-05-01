@@ -27,6 +27,8 @@ export default function TicketDetailPage() {
   const [attachActionErr, setAttachActionErr] = useState("");
   const [highlightActor, setHighlightActor] = useState<UserBrief | null>(null);
   const [deleteTicketErr, setDeleteTicketErr] = useState("");
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -168,20 +170,24 @@ export default function TicketDetailPage() {
       e.target.value = "";
       return;
     }
+    setAttachmentUploading(true);
+    setUploadingFileName(file.name);
     try {
       await uploadTicketAttachmentPresigned(id, token, file);
-    } catch (ex) {
-      setAttachActionErr(ex instanceof Error ? ex.message : "Error al subir");
       e.target.value = "";
-      return;
-    }
-    e.target.value = "";
-    await reloadAttachments();
-    if (ticket) {
-      const t2 = await apiFetch<Ticket>(`/tickets/${id}`, token);
-      setTicket(t2);
-      mergeTicket(t2);
-      await refreshTickets();
+      await reloadAttachments();
+      if (ticket) {
+        const t2 = await apiFetch<Ticket>(`/tickets/${id}`, token);
+        setTicket(t2);
+        mergeTicket(t2);
+        await refreshTickets();
+      }
+    } catch (ex) {
+      setAttachActionErr(ex instanceof Error ? ex.message : "Error al subir el archivo");
+      e.target.value = "";
+    } finally {
+      setAttachmentUploading(false);
+      setUploadingFileName(null);
     }
   };
 
@@ -316,10 +322,34 @@ export default function TicketDetailPage() {
           </form>
         </section>
 
-        <section className="mt-8 border-t border-zinc-800 pt-6">
+        <section
+          className="mt-8 border-t border-zinc-800 pt-6"
+          aria-busy={attachmentUploading}
+        >
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
             Adjuntos (S3, máx. 10 MB)
           </h2>
+          {attachmentUploading ? (
+            <div
+              className="mt-3 flex items-center gap-3 rounded-lg border border-sky-900/50 bg-sky-950/30 px-3 py-2.5 text-sm text-sky-100"
+              role="status"
+              aria-live="polite"
+            >
+              <span
+                className="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"
+                aria-hidden
+              />
+              <p>
+                Subiendo{" "}
+                {uploadingFileName ? (
+                  <span className="font-medium text-white">«{uploadingFileName}»</span>
+                ) : (
+                  "el archivo"
+                )}
+                …
+              </p>
+            </div>
+          ) : null}
           {attachHealth && attachHealth.attachment_storage !== "s3" && attachHealth.attachments_message && (
             <div className="mt-3 flex gap-3 rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2.5">
               <span className="shrink-0 text-amber-400/90" aria-hidden>
@@ -346,7 +376,11 @@ export default function TicketDetailPage() {
           <input
             type="file"
             className="mt-2 text-sm text-zinc-400 enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!attachHealth || attachHealth.attachment_storage !== "s3"}
+            disabled={
+              !attachHealth ||
+              attachHealth.attachment_storage !== "s3" ||
+              attachmentUploading
+            }
             onChange={onUpload}
           />
           <ul className="mt-4 space-y-2">
