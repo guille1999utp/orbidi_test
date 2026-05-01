@@ -6,10 +6,11 @@ import { Header } from "@/components/Header";
 import { TicketTable } from "@/components/TicketTable";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { CreateTicketModal } from "@/components/CreateTicketModal";
+import { UserMultiTicketFilter, ASSIGNEE_FILTER_UNASSIGNED } from "@/components/UserMultiTicketFilter";
 import { useAuth } from "@/lib/auth-context";
-import type { TicketPriority, TicketState } from "@/lib/types";
+import { apiFetch } from "@/lib/api";
+import type { TicketPriority, TicketState, UserBrief } from "@/lib/types";
 import { STATE_LABELS, PRIORITY_LABELS } from "@/lib/types";
-import Link from "next/link";
 
 type View = "list" | "kanban";
 
@@ -20,10 +21,38 @@ export default function BoardPage() {
   const [q, setQ] = useState("");
   const [stateF, setStateF] = useState<TicketState | "">("");
   const [priorityF, setPriorityF] = useState<TicketPriority | "">("");
+  const [assigneeFilterIds, setAssigneeFilterIds] = useState<string[]>([]);
+  const [authorFilterIds, setAuthorFilterIds] = useState<string[]>([]);
   const [sort, setSort] = useState<string>("updated_at");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [createOpen, setCreateOpen] = useState(false);
+  const [usersForAssigneeFilter, setUsersForAssigneeFilter] = useState<UserBrief[]>([]);
 
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const u = await apiFetch<UserBrief[]>("/users", token);
+        if (!cancelled) setUsersForAssigneeFilter(u);
+      } catch {
+        if (!cancelled) setUsersForAssigneeFilter([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const filterUsers = useMemo(() => {
+    if (usersForAssigneeFilter.length > 0) return usersForAssigneeFilter;
+    const map = new Map<string, UserBrief>();
+    for (const t of tickets) {
+      if (t.assignee) map.set(t.assignee.id, t.assignee);
+      if (t.author) map.set(t.author.id, t.author);
+    }
+    return [...map.values()];
+  }, [usersForAssigneeFilter, tickets]);
   const filtered = useMemo(() => {
     let list = [...tickets];
     if (q.trim()) {
@@ -36,6 +65,17 @@ export default function BoardPage() {
     }
     if (stateF) list = list.filter((t) => t.state === stateF);
     if (priorityF) list = list.filter((t) => t.priority === priorityF);
+    if (assigneeFilterIds.length > 0) {
+      const wantUnassigned = assigneeFilterIds.includes(ASSIGNEE_FILTER_UNASSIGNED);
+      const assigneeIds = new Set(assigneeFilterIds.filter((id) => id !== ASSIGNEE_FILTER_UNASSIGNED));
+      list = list.filter(
+        (t) => (wantUnassigned && !t.assignee_id) || (!!t.assignee_id && assigneeIds.has(t.assignee_id)),
+      );
+    }
+    if (authorFilterIds.length > 0) {
+      const authorSet = new Set(authorFilterIds);
+      list = list.filter((t) => authorSet.has(t.author_id));
+    }
     list.sort((a, b) => {
       let cmp = 0;
       if (sort === "title") cmp = a.title.localeCompare(b.title);
@@ -47,7 +87,7 @@ export default function BoardPage() {
       return order === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [tickets, q, stateF, priorityF, sort, order]);
+  }, [tickets, q, stateF, priorityF, assigneeFilterIds, authorFilterIds, sort, order]);
 
   useEffect(() => {
     if (!token || !user) router.replace("/login");
@@ -81,7 +121,7 @@ export default function BoardPage() {
           </button>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
           <div className="flex rounded-lg border border-zinc-800 p-0.5">
             <button
               type="button"
@@ -128,9 +168,22 @@ export default function BoardPage() {
               </option>
             ))}
           </select>
-          <Link href="/login" className="text-sm text-zinc-500 hover:text-zinc-300">
-            Cambiar cuenta
-          </Link>
+          <UserMultiTicketFilter
+            variant="assignee"
+            className="shrink-0"
+            selected={assigneeFilterIds}
+            onChange={setAssigneeFilterIds}
+            users={filterUsers}
+            label="Asignado a"
+          />
+          <UserMultiTicketFilter
+            variant="author"
+            className="shrink-0"
+            selected={authorFilterIds}
+            onChange={setAuthorFilterIds}
+            users={filterUsers}
+            label="Creado por"
+          />
         </div>
 
         {view === "list" ? (
