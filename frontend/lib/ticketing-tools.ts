@@ -59,12 +59,97 @@ export function createTicketingTools(token: string) {
     }),
 
     listUsers: tool({
-      description: "Lista usuarios del sistema con id, nombre y email. Necesario para asignar por id.",
+      description:
+        "Lista usuarios del sistema con id, nombre y email. Úsalo para asignar tickets o para resolver ids al crear tickets.",
       inputSchema: z.object({}),
       execute: async () => {
         try {
           const users = await assistantFetch<UserBrief[]>("/users", token);
           return users.map((u) => ({ id: u.id, name: u.name, email: u.email }));
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    }),
+
+    createTicket: tool({
+      description:
+        "Crea un ticket nuevo. El autor es quien está logueado. Puedes pasar assigneeUserId (UUID) o assigneeNameOrEmail (subcadena única en nombre o email, ej. guille1999 si el correo lo contiene).",
+      inputSchema: z.object({
+        title: z.string().min(1).max(500).describe("Título corto del ticket"),
+        description: z
+          .string()
+          .optional()
+          .default("")
+          .describe("Descripción con el contexto (fechas, detalles, etc.)"),
+        priority: ticketPriorityZ
+          .optional()
+          .default("medium")
+          .describe("urgent, high, medium o low"),
+        state: ticketStateZ
+          .optional()
+          .default("open")
+          .describe("Estado inicial; casi siempre open"),
+        assigneeUserId: z
+          .string()
+          .uuid()
+          .optional()
+          .describe("UUID del responsable si ya lo tienes (p. ej. de listUsers)"),
+        assigneeNameOrEmail: z
+          .string()
+          .optional()
+          .describe(
+            "Texto que identifique a un solo usuario en nombre o email (sin ambigüedad). Si hay varias coincidencias, el tool devuelve error y debes usar assigneeUserId.",
+          ),
+      }),
+      execute: async ({
+        title,
+        description,
+        priority,
+        state,
+        assigneeUserId,
+        assigneeNameOrEmail,
+      }) => {
+        try {
+          let assigneeId: string | undefined = assigneeUserId;
+          const hint = assigneeNameOrEmail?.trim();
+          if (hint) {
+            const users = await assistantFetch<UserBrief[]>("/users", token);
+            const needle = hint.toLowerCase();
+            const matches = users.filter(
+              (u) =>
+                u.name.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle),
+            );
+            if (matches.length === 0) {
+              return {
+                error: `No hay usuario que coincida con «${hint}». Ejecuta listUsers y usa assigneeUserId.`,
+              };
+            }
+            if (matches.length > 1) {
+              return {
+                error: `Hay ${matches.length} usuarios que coinciden con «${hint}»: ${matches.map((m) => `${m.name} (${m.email})`).join("; ")}. Pasa assigneeUserId explícito.`,
+              };
+            }
+            assigneeId = matches[0].id;
+          }
+
+          const payload: Record<string, unknown> = {
+            title,
+            description: description ?? "",
+            priority: priority ?? "medium",
+            state: state ?? "open",
+          };
+          if (assigneeId) payload.assignee_id = assigneeId;
+
+          const t = await assistantFetch<Ticket>("/tickets", token, {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          return {
+            ok: true as const,
+            ticket: summarizeTicket(t),
+            message: `Ticket creado: «${t.title}» (id ${t.id})`,
+          };
         } catch (e) {
           return { error: e instanceof Error ? e.message : String(e) };
         }
