@@ -88,10 +88,30 @@ class AttachmentOut(BaseModel):
     id: uuid.UUID
     ticket_id: uuid.UUID
     original_filename: str
+    storage_backend: str = "local"
+    upload_status: str = "complete"
     content_type: Optional[str]
     size_bytes: int
     created_at: datetime
     uploaded_by: UserBrief
+
+
+class AttachmentPresignIn(BaseModel):
+    filename: str = Field(..., max_length=512)
+    content_type: Optional[str] = Field(None, max_length=255)
+    size_bytes: Optional[int] = Field(None, ge=1)
+
+
+class AttachmentPresignOut(BaseModel):
+    attachment_id: uuid.UUID
+    upload_url: str
+    method: str = "PUT"
+    headers: Dict[str, str]
+
+
+class DownloadUrlOut(BaseModel):
+    url: str
+    auth_required: bool = False
 
 
 class NotificationOut(BaseModel):

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text as sa_text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -96,6 +97,8 @@ class Attachment(Base):
     uploaded_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     original_filename: Mapped[str] = mapped_column(String(512), nullable=False)
     stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String(8), nullable=False, server_default=sa_text("'local'"))
+    upload_status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=sa_text("'complete'"))
     content_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

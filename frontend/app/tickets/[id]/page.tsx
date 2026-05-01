@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { useAuth } from "@/lib/auth-context";
-import { apiFetch, downloadAttachment } from "@/lib/api";
+import { apiFetch, downloadAttachment, uploadTicketAttachmentPresigned, type HealthOut } from "@/lib/api";
 import type { Attachment, Comment, Ticket, UserBrief } from "@/lib/types";
 import { PRIORITY_LABELS, STATE_LABELS } from "@/lib/types";
 import { UserAvatar, UserBadge } from "@/components/UserBadge";
@@ -14,7 +14,7 @@ import { AssigneePicker } from "@/components/AssigneePicker";
 export default function TicketDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const { token, user, mergeTicket, refreshTickets } = useAuth();
+  const { token, user, mergeTicket, refreshTickets, tickets } = useAuth();
   const router = useRouter();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -23,6 +23,8 @@ export default function TicketDetailPage() {
   const [commentBody, setCommentBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [attachHealth, setAttachHealth] = useState<HealthOut | null>(null);
+  const [attachActionErr, setAttachActionErr] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -45,6 +47,36 @@ export default function TicketDetailPage() {
       }
     })();
   }, [id, token]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    apiFetch<HealthOut>("/health", token)
+      .then((h) => {
+        if (!cancelled) setAttachHealth(h);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAttachHealth({
+            status: "ok",
+            attachment_storage: "unavailable",
+            attachments_message:
+              "No se pudo obtener el estado del servidor. Comprueba que el backend esté en marcha y la URL en NEXT_PUBLIC_API_URL.",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!ticket || loading || !token) return;
+    const found = tickets.some((t) => t.id === id);
+    if (tickets.length > 0 && !found) {
+      router.replace("/board");
+    }
+  }, [tickets, id, ticket, loading, token, router]);
 
   useEffect(() => {
     if (!token || !user) router.replace("/login");
@@ -90,18 +122,20 @@ export default function TicketDetailPage() {
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !token) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch(
-      `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "")}/api/tickets/${id}/attachments`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      },
-    );
-    if (!res.ok) {
-      alert(await res.text());
+    setAttachActionErr("");
+    if (attachHealth?.attachment_storage !== "s3") {
+      setAttachActionErr(
+        attachHealth?.attachments_message ??
+          "Los adjuntos solo funcionan con S3 configurado en el backend (.env).",
+      );
+      e.target.value = "";
+      return;
+    }
+    try {
+      await uploadTicketAttachmentPresigned(id, token, file);
+    } catch (ex) {
+      setAttachActionErr(ex instanceof Error ? ex.message : "Error al subir");
+      e.target.value = "";
       return;
     }
     e.target.value = "";
@@ -110,12 +144,31 @@ export default function TicketDetailPage() {
       const t2 = await apiFetch<Ticket>(`/tickets/${id}`, token);
       setTicket(t2);
       mergeTicket(t2);
+      await refreshTickets();
     }
+  };
+
+  const onDeleteTicket = async () => {
+    if (!token || !confirm("¿Eliminar este ticket, comentarios y adjuntos del servidor?")) return;
+    try {
+      await apiFetch(`/tickets/${id}`, token, { method: "DELETE" });
+    } catch (ex) {
+      alert(ex instanceof Error ? ex.message : "No se pudo eliminar");
+      return;
+    }
+    await refreshTickets();
+    router.replace("/board");
   };
 
   const onDeleteAtt = async (attId: string) => {
     if (!token) return;
-    await apiFetch(`/attachments/${attId}`, token, { method: "DELETE" });
+    setAttachActionErr("");
+    try {
+      await apiFetch(`/attachments/${attId}`, token, { method: "DELETE" });
+    } catch (ex) {
+      setAttachActionErr(ex instanceof Error ? ex.message : "No se pudo eliminar el adjunto");
+      return;
+    }
     await reloadAttachments();
   };
 
@@ -210,7 +263,26 @@ export default function TicketDetailPage() {
 
         <section className="mt-8 border-t border-zinc-800 pt-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Adjuntos (máx. 10 MB)</h2>
-          <input type="file" className="mt-2 text-sm text-zinc-400" onChange={onUpload} />
+          {attachHealth && attachHealth.attachment_storage !== "s3" && attachHealth.attachments_message && (
+            <div
+              role="alert"
+              className="mt-3 rounded-lg border border-amber-800/70 bg-amber-950/35 px-3 py-2 text-sm text-amber-100/95"
+            >
+              <p className="font-medium text-amber-50">No se pueden usar adjuntos hasta configurar S3 en el backend</p>
+              <p className="mt-1 text-amber-100/85">{attachHealth.attachments_message}</p>
+            </div>
+          )}
+          {attachActionErr ? (
+            <p className="mt-2 text-sm text-rose-400" role="alert">
+              {attachActionErr}
+            </p>
+          ) : null}
+          <input
+            type="file"
+            className="mt-2 text-sm text-zinc-400 enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!attachHealth || attachHealth.attachment_storage !== "s3"}
+            onChange={onUpload}
+          />
           <ul className="mt-4 space-y-2">
             {attachments.map((a) => (
               <li
@@ -219,13 +291,22 @@ export default function TicketDetailPage() {
               >
                 <span className="text-zinc-300">{a.original_filename}</span>
                 <span className="text-xs text-zinc-600">
-                  {(a.size_bytes / 1024).toFixed(1)} KB · {a.uploaded_by.name}
+                  {a.upload_status === "pending"
+                    ? "Subiendo…"
+                    : `${(a.size_bytes / 1024).toFixed(1)} KB`}{" "}
+                  · {a.uploaded_by.name}
                 </span>
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    className="text-sky-400 hover:underline"
-                    onClick={() => downloadAttachment(a.id, token!, a.original_filename)}
+                    className="text-sky-400 hover:underline disabled:opacity-40 disabled:no-underline"
+                    disabled={a.upload_status !== "complete"}
+                    onClick={() => {
+                      setAttachActionErr("");
+                      downloadAttachment(a.id, token!, a.original_filename).catch((ex) => {
+                        setAttachActionErr(ex instanceof Error ? ex.message : "Error al descargar");
+                      });
+                    }}
                   >
                     Descargar
                   </button>
@@ -240,6 +321,20 @@ export default function TicketDetailPage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="mt-8 border-t border-zinc-800 pt-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Eliminar ticket</h2>
+          <p className="mt-2 text-sm text-zinc-500">
+            Quita el ticket de la base de datos y borra los objetos asociados en S3.
+          </p>
+          <button
+            type="button"
+            className="mt-3 rounded-lg border border-rose-900/50 bg-rose-950/40 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/70"
+            onClick={() => void onDeleteTicket()}
+          >
+            Eliminar ticket
+          </button>
         </section>
       </main>
     </>

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from pathlib import Path
-
+import logging
 from typing import Optional
 
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
@@ -10,22 +9,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, apply_schema_patches, engine
 from app.deps import ws_user_from_token
 from app.routers import attachments, auth, notifications, tickets, users
+from app.services import attachment_migration, s3_storage
 from app.ws_manager import ws_manager
+
+_log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    try:
-        Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        # Vercel y otros entornos de solo lectura: usar UPLOADS_DIR=/tmp/... en variables de entorno
-        import logging
-
-        logging.getLogger(__name__).warning("No se pudo crear uploads_dir=%s: %s", settings.uploads_dir, e)
+    apply_schema_patches()
+    if s3_storage.s3_configured():
+        migrated, missing = attachment_migration.migrate_local_attachments_to_s3()
+        if migrated or missing:
+            _log.info("Adjuntos: migrados=%s sin_fichero=%s", migrated, missing)
     yield
 
 
@@ -48,7 +48,20 @@ app.include_router(attachments.router, prefix="/api")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    if s3_storage.s3_configured():
+        mode = "s3"
+        message = None
+    elif s3_storage.s3_bucket_expected():
+        mode = "misconfigured"
+        message = s3_storage.s3_not_ready_detail()
+    else:
+        mode = "unavailable"
+        message = s3_storage.attachments_disabled_detail()
+    return {
+        "status": "ok",
+        "attachment_storage": mode,
+        "attachments_message": message,
+    }
 
 
 @app.websocket("/api/ws")

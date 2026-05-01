@@ -97,6 +97,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (msg.type === "ticket_updated" && msg.payload?.ticket) {
             mergeTicket(msg.payload.ticket);
           }
+          if (
+            msg.type === "ticket_deleted" &&
+            msg.payload &&
+            "ticket_id" in msg.payload &&
+            typeof msg.payload.ticket_id === "string"
+          ) {
+            const tid = msg.payload.ticket_id;
+            setTickets((prev) => prev.filter((x) => x.id !== tid));
+          }
           if (msg.type === "notifications_changed") {
             refreshUnread();
           }
@@ -113,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       alive = false;
       ws?.close();
     };
-  }, [token, mergeTicket, refreshUnread]);
+  }, [token, mergeTicket, refreshUnread, setTickets]);
 
   const loginWithGoogleCredential = async (credential: string) => {
     const res = await apiFetch<{ access_token: string; user: UserBrief }>(

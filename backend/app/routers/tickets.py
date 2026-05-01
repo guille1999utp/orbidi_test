@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Comment, Ticket, TicketPriority, TicketState, User, utcnow
+from app.models import Attachment, Comment, Ticket, TicketPriority, TicketState, User, utcnow
 from app.schemas import CommentCreate, CommentOut, TicketCreate, TicketOut, TicketUpdate
 from app.services import notify as notify_svc
+from app.services.attachment_storage import purge_attachment_blob
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -172,3 +173,24 @@ async def add_comment(
     await notify_svc.broadcast_ticket_updated(db, ticket_id)
     await notify_svc.ping_users_notification_refresh(pings)
     return CommentOut.model_validate(c)
+
+
+@router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ticket(
+    ticket_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    t = db.get(Ticket, ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+    atts = db.scalars(select(Attachment).where(Attachment.ticket_id == ticket_id)).all()
+    for a in atts:
+        purge_attachment_blob(a)
+    db.delete(t)
+    db.commit()
+    from app.ws_manager import ws_manager
+
+    await ws_manager.broadcast_all(
+        {"type": "ticket_deleted", "payload": {"ticket_id": str(ticket_id)}}
+    )

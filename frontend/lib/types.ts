@@ -37,6 +37,8 @@ export interface Attachment {
   id: string;
   ticket_id: string;
   original_filename: string;
+  storage_backend: string;
+  upload_status: string;
   content_type: string | null;
   size_bytes: number;
   created_at: string;
