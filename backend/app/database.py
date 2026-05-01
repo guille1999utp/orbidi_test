@@ -18,6 +18,7 @@ def apply_schema_patches() -> None:
     stmts = (
         "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS storage_backend VARCHAR(8) NOT NULL DEFAULT 'local'",
         "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS upload_status VARCHAR(16) NOT NULL DEFAULT 'complete'",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_id UUID REFERENCES users(id) ON DELETE SET NULL",
     )
     with engine.begin() as conn:
         for sql in stmts:

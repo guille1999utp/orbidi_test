@@ -115,9 +115,13 @@ class Notification(Base):
     ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True
     )
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     type: Mapped[NotificationType] = mapped_column(Enum(NotificationType), nullable=False)
     message: Mapped[str] = mapped_column(String(1024), nullable=False)
     is_read: Mapped[bool] = mapped_column("read", Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    actor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[actor_id])

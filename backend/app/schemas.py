@@ -123,6 +123,7 @@ class NotificationOut(BaseModel):
     message: str
     is_read: bool
     created_at: datetime
+    actor: Optional[UserBrief] = None
 
 
 class WSMessage(BaseModel):

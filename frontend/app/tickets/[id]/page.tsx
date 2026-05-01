@@ -14,7 +14,7 @@ import { AssigneePicker } from "@/components/AssigneePicker";
 export default function TicketDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const { token, user, mergeTicket, refreshTickets, tickets } = useAuth();
+  const { token, user, mergeTicket, refreshTickets, tickets, subscribeToTicketUpdates } = useAuth();
   const router = useRouter();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -25,6 +25,8 @@ export default function TicketDetailPage() {
   const [err, setErr] = useState("");
   const [attachHealth, setAttachHealth] = useState<HealthOut | null>(null);
   const [attachActionErr, setAttachActionErr] = useState("");
+  const [highlightActor, setHighlightActor] = useState<UserBrief | null>(null);
+  const [deleteTicketErr, setDeleteTicketErr] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -50,6 +52,27 @@ export default function TicketDetailPage() {
 
   useEffect(() => {
     if (!token) return;
+    const unsub = subscribeToTicketUpdates((updated) => {
+      if (String(updated.id) !== String(id)) return;
+      setTicket(updated);
+      void (async () => {
+        try {
+          const [c, a] = await Promise.all([
+            apiFetch<Comment[]>(`/tickets/${id}/comments`, token),
+            apiFetch<Attachment[]>(`/tickets/${id}/attachments`, token),
+          ]);
+          setComments(c);
+          setAttachments(a);
+        } catch {
+          /* ignore */
+        }
+      })();
+    });
+    return unsub;
+  }, [subscribeToTicketUpdates, id, token]);
+
+  useEffect(() => {
+    if (!token) return;
     let cancelled = false;
     apiFetch<HealthOut>("/health", token)
       .then((h) => {
@@ -69,6 +92,20 @@ export default function TicketDetailPage() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("ticketing_notif_actor");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { ticketId: string; actor: UserBrief | null };
+      if (parsed.ticketId === id && parsed.actor) {
+        setHighlightActor(parsed.actor);
+      }
+      sessionStorage.removeItem("ticketing_notif_actor");
+    } catch {
+      sessionStorage.removeItem("ticketing_notif_actor");
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!ticket || loading || !token) return;
@@ -150,10 +187,11 @@ export default function TicketDetailPage() {
 
   const onDeleteTicket = async () => {
     if (!token || !confirm("¿Eliminar este ticket, comentarios y adjuntos del servidor?")) return;
+    setDeleteTicketErr("");
     try {
       await apiFetch(`/tickets/${id}`, token, { method: "DELETE" });
     } catch (ex) {
-      alert(ex instanceof Error ? ex.message : "No se pudo eliminar");
+      setDeleteTicketErr(ex instanceof Error ? ex.message : "No se pudo eliminar");
       return;
     }
     await refreshTickets();
@@ -206,6 +244,23 @@ export default function TicketDetailPage() {
           <span className="text-zinc-600">·</span>
           <span>{PRIORITY_LABELS[ticket.priority]}</span>
         </div>
+        {highlightActor ? (
+          <div className="mt-4 flex items-center gap-3 rounded-lg border border-sky-900/40 bg-sky-950/25 px-3 py-2">
+            <UserAvatar user={highlightActor} size="sm" title={highlightActor.name} />
+            <p className="min-w-0 flex-1 text-sm text-zinc-300">
+              Actividad reciente de{" "}
+              <span className="font-medium text-zinc-100">{highlightActor.name}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setHighlightActor(null)}
+              className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-8 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-4">
           <UserBadge user={ticket.author} label="Creador" size="md" />
           <UserBadge
@@ -262,20 +317,31 @@ export default function TicketDetailPage() {
         </section>
 
         <section className="mt-8 border-t border-zinc-800 pt-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Adjuntos (máx. 10 MB)</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            Adjuntos (S3, máx. 10 MB)
+          </h2>
           {attachHealth && attachHealth.attachment_storage !== "s3" && attachHealth.attachments_message && (
-            <div
-              role="alert"
-              className="mt-3 rounded-lg border border-amber-800/70 bg-amber-950/35 px-3 py-2 text-sm text-amber-100/95"
-            >
-              <p className="font-medium text-amber-50">No se pueden usar adjuntos hasta configurar S3 en el backend</p>
-              <p className="mt-1 text-amber-100/85">{attachHealth.attachments_message}</p>
+            <div className="mt-3 flex gap-3 rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2.5">
+              <span className="shrink-0 text-amber-400/90" aria-hidden>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+              <div className="min-w-0 text-sm">
+                <p className="font-medium text-amber-100/95">Almacenamiento de adjuntos</p>
+                <p className="mt-0.5 text-amber-100/75">{attachHealth.attachments_message}</p>
+              </div>
             </div>
           )}
           {attachActionErr ? (
-            <p className="mt-2 text-sm text-rose-400" role="alert">
-              {attachActionErr}
-            </p>
+            <div className="mt-2 flex gap-2 rounded-lg border border-rose-900/40 bg-rose-950/20 px-3 py-2 text-sm text-rose-200">
+              <span className="shrink-0 text-rose-400" aria-hidden>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </span>
+              <span>{attachActionErr}</span>
+            </div>
           ) : null}
           <input
             type="file"
@@ -328,6 +394,7 @@ export default function TicketDetailPage() {
           <p className="mt-2 text-sm text-zinc-500">
             Quita el ticket de la base de datos y borra los objetos asociados en S3.
           </p>
+          {deleteTicketErr ? <p className="mt-2 text-sm text-rose-400">{deleteTicketErr}</p> : null}
           <button
             type="button"
             className="mt-3 rounded-lg border border-rose-900/50 bg-rose-950/40 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/70"

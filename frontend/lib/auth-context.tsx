@@ -6,12 +6,15 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { Ticket, UserBrief } from "@/lib/types";
 import { apiFetch, wsUrl } from "@/lib/api";
 
 const STORAGE_KEY = "ticketing_token";
+
+type TicketUpdateHandler = (ticket: Ticket) => void;
 
 type AuthContextValue = {
   token: string | null;
@@ -26,6 +29,8 @@ type AuthContextValue = {
   refreshUnread: () => Promise<void>;
   notificationsOpen: boolean;
   setNotificationsOpen: (v: boolean) => void;
+  /** Suscripción a `ticket_updated` vía WebSocket (p. ej. refrescar comentarios en detalle). */
+  subscribeToTicketUpdates: (handler: TicketUpdateHandler) => () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -37,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const ticketUpdateListenersRef = useRef<Set<TicketUpdateHandler>>(new Set());
 
   useEffect(() => {
     const t = localStorage.getItem(STORAGE_KEY);
@@ -76,6 +82,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const subscribeToTicketUpdates = useCallback((handler: TicketUpdateHandler) => {
+    const set = ticketUpdateListenersRef.current;
+    set.add(handler);
+    return () => {
+      set.delete(handler);
+    };
+  }, []);
+
   useEffect(() => {
     if (!token || !hydrated) return;
     refreshTickets();
@@ -95,7 +109,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             payload?: { ticket?: Ticket };
           };
           if (msg.type === "ticket_updated" && msg.payload?.ticket) {
-            mergeTicket(msg.payload.ticket);
+            const t = msg.payload.ticket;
+            mergeTicket(t);
+            ticketUpdateListenersRef.current.forEach((h) => {
+              try {
+                h(t);
+              } catch {
+                /* ignore */
+              }
+            });
           }
           if (
             msg.type === "ticket_deleted" &&
@@ -161,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUnread,
       notificationsOpen,
       setNotificationsOpen,
+      subscribeToTicketUpdates,
     }),
     [
       token,
@@ -171,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unreadCount,
       refreshUnread,
       notificationsOpen,
+      subscribeToTicketUpdates,
     ],
   );
 

@@ -15,6 +15,7 @@ def _add_notification(
     ticket_id: Optional[UUID],
     ntype: NotificationType,
     message: str,
+    actor_id: Optional[UUID] = None,
 ) -> None:
     db.add(
         Notification(
@@ -23,6 +24,7 @@ def _add_notification(
             type=ntype,
             message=message,
             is_read=False,
+            actor_id=actor_id,
         )
     )
 
@@ -36,6 +38,7 @@ def notify_assigned(db: Session, ticket: Ticket, new_assignee_id: Optional[UUID]
             ticket.id,
             NotificationType.assigned,
             f"Te han asignado el ticket: {ticket.title}",
+            actor_id=actor_id,
         )
         pings.append(new_assignee_id)
     return pings
@@ -55,6 +58,7 @@ def notify_comment(db: Session, ticket: Ticket, comment_author_id: UUID, preview
             ticket.id,
             NotificationType.comment,
             f"Nuevo comentario en «{ticket.title}»: {preview[:200]}",
+            actor_id=comment_author_id,
         )
     return pings
 
@@ -89,6 +93,7 @@ def notify_status_change(
             ticket.id,
             NotificationType.status_change,
             msg,
+            actor_id=actor_id,
         )
     return pings
 

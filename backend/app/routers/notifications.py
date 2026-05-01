@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import get_current_user
@@ -21,10 +21,11 @@ def list_notifications(
 ):
     rows = db.scalars(
         select(Notification)
+        .options(joinedload(Notification.actor))
         .where(Notification.user_id == current.id)
         .order_by(Notification.created_at.desc())
         .limit(100)
-    ).all()
+    ).unique().all()
     return [NotificationOut.model_validate(n) for n in rows]
 
 
