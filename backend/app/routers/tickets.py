@@ -110,7 +110,7 @@ async def update_ticket(
         t.title = body.title
     if body.description is not None:
         t.description = body.description
-    if body.assignee_id is not None:
+    if "assignee_id" in body.model_fields_set:
         t.assignee_id = body.assignee_id
     if body.state is not None:
         t.state = body.state
@@ -120,8 +120,12 @@ async def update_ticket(
     t.updated_at = utcnow()
 
     pings: list[uuid.UUID] = []
-    if body.assignee_id is not None and t.assignee_id != old_assignee:
-        pings.extend(notify_svc.notify_assigned(db, t, t.assignee_id, current.id))
+    if (
+        "assignee_id" in body.model_fields_set
+        and body.assignee_id is not None
+        and body.assignee_id != old_assignee
+    ):
+        pings.extend(notify_svc.notify_assigned(db, t, body.assignee_id, current.id))
 
     new_state_val = t.state.value
     if body.state is not None and new_state_val != old_state:

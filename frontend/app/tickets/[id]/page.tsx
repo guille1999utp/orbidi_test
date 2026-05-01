@@ -327,7 +327,7 @@ export default function TicketDetailPage() {
           aria-busy={attachmentUploading}
         >
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Adjuntos (S3, máx. 10 MB)
+            Adjuntos (máx. 10 MB)
           </h2>
           {attachmentUploading ? (
             <div

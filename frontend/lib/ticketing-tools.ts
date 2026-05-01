@@ -92,7 +92,8 @@ export function createTicketingTools(token: string) {
     }),
 
     assignTicket: tool({
-      description: "Asigna un ticket a un usuario por su id (UUID). Usa listUsers si no conoces el id.",
+      description:
+        "Asigna un ticket a un usuario por su id (UUID). Usa listUsers si no conoces el id. Para quitar la asignación y dejar el ticket sin responsable, usa la herramienta unassignTicket.",
       inputSchema: z.object({
         ticketId: z.string().uuid(),
         assigneeUserId: z.string().uuid().describe("UUID del usuario asignado"),
@@ -102,6 +103,25 @@ export function createTicketingTools(token: string) {
           const t = await assistantFetch<Ticket>(`/tickets/${ticketId}`, token, {
             method: "PATCH",
             body: JSON.stringify({ assignee_id: assigneeUserId }),
+          });
+          return { ok: true as const, ticket: summarizeTicket(t) };
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    }),
+
+    unassignTicket: tool({
+      description:
+        "Quita el responsable del ticket (assignee_id a null). El ticket queda sin asignar.",
+      inputSchema: z.object({
+        ticketId: z.string().uuid(),
+      }),
+      execute: async ({ ticketId }) => {
+        try {
+          const t = await assistantFetch<Ticket>(`/tickets/${ticketId}`, token, {
+            method: "PATCH",
+            body: JSON.stringify({ assignee_id: null }),
           });
           return { ok: true as const, ticket: summarizeTicket(t) };
         } catch (e) {

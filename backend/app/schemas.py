@@ -46,6 +46,7 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
+    # En PATCH JSON, enviar "assignee_id": null quita la asignación (ver model_fields_set en el router).
     assignee_id: Optional[uuid.UUID] = None
     state: Optional[TicketState] = None
     priority: Optional[TicketPriority] = None

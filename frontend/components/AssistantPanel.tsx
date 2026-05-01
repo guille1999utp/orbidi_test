@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, getToolName, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
+import { DefaultChatTransport, isTextUIPart, type UIMessage } from "ai";
 import { clsx } from "clsx";
 import { useCallback, useMemo, useState } from "react";
 
@@ -10,27 +10,8 @@ type Props = {
   onActionsDone?: () => void | Promise<void>;
 };
 
-function ToolBlock({ part }: { part: UIMessage["parts"][number] }) {
-  if (!isToolUIPart(part)) return null;
-  const name = getToolName(part);
-  const state = "state" in part ? part.state : "";
-  return (
-    <div className="rounded-md border border-zinc-700 bg-zinc-900/60 px-2 py-1.5 text-xs text-zinc-400">
-      <span className="font-medium text-sky-400/90">{name}</span>
-      <span className="mx-1.5 text-zinc-600">·</span>
-      <span className="text-zinc-500">{String(state)}</span>
-      {"output" in part && part.state === "output-available" ? (
-        <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all text-[11px] text-zinc-500">
-          {typeof part.output === "object" && part.output !== null
-            ? JSON.stringify(part.output, null, 2)
-            : String(part.output)}
-        </pre>
-      ) : null}
-      {"errorText" in part && part.errorText ? (
-        <p className="mt-1 text-rose-400/90">{part.errorText}</p>
-      ) : null}
-    </div>
-  );
+function messageTextParts(m: UIMessage) {
+  return m.parts.filter(isTextUIPart);
 }
 
 export function AssistantPanel({ token, onActionsDone }: Props) {
@@ -110,51 +91,48 @@ export function AssistantPanel({ token, onActionsDone }: Props) {
                 Ej.: «Asigna el ticket sobre facturación a Ana» o «Elimina el ticket con título X» (confirma el id antes).
               </p>
             ) : null}
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={clsx(
-                  "rounded-lg px-2 py-2 text-sm",
-                  m.role === "user" ? "ml-4 bg-zinc-800 text-zinc-100" : "mr-4 text-zinc-200",
-                )}
-              >
-                {m.parts.map((part, i) => {
-                  if (isTextUIPart(part)) {
-                    return (
-                      <p key={i} className="whitespace-pre-wrap">
-                        {part.text}
-                      </p>
-                    );
-                  }
-                  if (part.type === "dynamic-tool") {
-                    return (
-                      <div
-                        key={i}
-                        className="rounded-md border border-zinc-700 bg-zinc-900/60 px-2 py-1.5 text-xs text-zinc-400"
-                      >
-                        <span className="font-medium text-sky-400/90">{part.toolName}</span>
-                        <span className="mx-1.5 text-zinc-600">·</span>
-                        <span className="text-zinc-500">{part.state}</span>
-                        {part.state === "output-available" ? (
-                          <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all text-[11px] text-zinc-500">
-                            {typeof part.output === "object" && part.output !== null
-                              ? JSON.stringify(part.output, null, 2)
-                              : String(part.output)}
-                          </pre>
-                        ) : null}
-                        {"errorText" in part && part.errorText ? (
-                          <p className="mt-1 text-rose-400/90">{part.errorText}</p>
-                        ) : null}
-                      </div>
-                    );
-                  }
-                  if (isToolUIPart(part)) {
-                    return <ToolBlock key={i} part={part} />;
-                  }
-                  return null;
-                })}
-              </div>
-            ))}
+            {messages.map((m, idx) => {
+              const texts = messageTextParts(m);
+              const isLast = idx === messages.length - 1;
+              const placeholderAssistant =
+                m.role === "assistant" &&
+                texts.length === 0 &&
+                busy &&
+                isLast;
+
+              if (m.role === "assistant" && texts.length === 0 && !placeholderAssistant) {
+                return null;
+              }
+
+              return (
+                <div
+                  key={m.id}
+                  className={clsx(
+                    "rounded-lg px-2 py-2 text-sm",
+                    m.role === "user" ? "ml-4 bg-zinc-800 text-zinc-100" : "mr-4 text-zinc-200",
+                  )}
+                >
+                  {m.role === "user"
+                    ? texts.map((part, i) => (
+                        <p key={i} className="whitespace-pre-wrap">
+                          {part.text}
+                        </p>
+                      ))
+                    : null}
+                  {m.role === "assistant"
+                    ? placeholderAssistant
+                      ? (
+                          <p className="animate-pulse text-zinc-500">Un momento…</p>
+                        )
+                      : texts.map((part, i) => (
+                          <p key={i} className="whitespace-pre-wrap">
+                            {part.text}
+                          </p>
+                        ))
+                    : null}
+                </div>
+              );
+            })}
           </div>
 
           {error ? (
@@ -196,11 +174,7 @@ export function AssistantPanel({ token, onActionsDone }: Props) {
             <a href="https://ai-sdk.dev" className="text-sky-500 hover:underline" target="_blank" rel="noreferrer">
               AI SDK
             </a>
-            . UI propia; para componentes{" "}
-            <a href="https://elements.ai-sdk.dev" className="text-sky-500 hover:underline" target="_blank" rel="noreferrer">
-              AI Elements
-            </a>{" "}
-            ejecuta <code className="text-zinc-500">npx ai-elements@latest add</code>.
+            . UI propia.
           </p>
         </div>
       ) : null}

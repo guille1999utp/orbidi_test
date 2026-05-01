@@ -71,9 +71,16 @@ class Ticket(Base):
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id])
     assignee: Mapped[Optional["User"]] = relationship("User", foreign_keys=[assignee_id])
     comments: Mapped[List["Comment"]] = relationship(
-        "Comment", back_populates="ticket", order_by="Comment.created_at.asc()"
+        "Comment",
+        back_populates="ticket",
+        order_by="Comment.created_at.asc()",
+        cascade="all, delete-orphan",
     )
-    attachments: Mapped[List["Attachment"]] = relationship("Attachment", back_populates="ticket")
+    attachments: Mapped[List["Attachment"]] = relationship(
+        "Attachment",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+    )
 
 
 class Comment(Base):
