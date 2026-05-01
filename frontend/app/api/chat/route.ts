@@ -9,7 +9,7 @@ import { createTicketingTools } from "@/lib/ticketing-tools";
 
 export const maxDuration = 60;
 
-/** Modelos recientes: p. ej. claude-sonnet-4-20250514, claude-haiku-4-5, claude-opus-4-0 */
+/** Modelos recientes: p. ej. claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-0 */
 const ANTHROPIC_MODEL =
   process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-5";
 

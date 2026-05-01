@@ -9,33 +9,50 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticket -d ticketing"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
 
   backend:
     build: ./backend
     ports:
       - "8000:8000"
+    # Carga GOOGLE_CLIENT_ID, JWT_SECRET, FRONTEND_URL, AWS_*, etc. desde backend/.env
+    env_file:
+      - path: ./backend/.env
+        required: false
+    # Estas claves pisan lo de env_file: en Docker la DB es el servicio `db`, no localhost.
     environment:
       DATABASE_URL: postgresql+psycopg2://ticket:ticket@db:5432/ticketing
-      JWT_SECRET: ${JWT_SECRET:-dev-change-me-in-production-min-32-chars-long}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       UPLOADS_DIR: /data/uploads
     volumes:
       - uploads:/data/uploads
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
+      # En build se inyectan NEXT_PUBLIC_*; para tomarlos de frontend/.env.local usa:
+      # docker compose --env-file frontend/.env.local up --build
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_CLIENT_ID:-}}
     ports:
       - "3000:3000"
+    # En runtime (p. ej. ANTHROPIC_API_KEY para /api/chat) desde frontend/.env.local
+    env_file:
+      - path: ./frontend/.env.local
+        required: false
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_CLIENT_ID:-}}
+      # Server-side (p. ej. /api/chat, herramientas del asistente): en Compose el API es el servicio `backend`, no localhost.
+      API_URL: http://backend:8000
     depends_on:
       - backend
 

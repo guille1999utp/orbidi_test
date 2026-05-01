@@ -35,9 +35,13 @@ export default function LoginPage() {
       </div>
       {!hasGoogle ? (
         <p className="max-w-md text-center text-sm text-amber-400">
-          Configura <code className="text-amber-200">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> en{" "}
-          <code>.env.local</code> y el mismo ID en el backend como{" "}
-          <code className="text-amber-200">GOOGLE_CLIENT_ID</code>.
+          No hay Client ID de Google en el front (no llegó al bundle de esta compilación). En{" "}
+          <code className="text-amber-200">frontend/.env.local</code> define{" "}
+          <code className="text-amber-200">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> con el{" "}
+          <strong>mismo valor</strong> que <code className="text-amber-200">GOOGLE_CLIENT_ID</code> en
+          el backend; con Docker ejecuta{" "}
+          <code className="text-amber-200">docker compose build --no-cache frontend</code> y vuelve a
+          levantar.
         </p>
       ) : (
         <GoogleLogin

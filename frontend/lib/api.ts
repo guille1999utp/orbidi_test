@@ -1,12 +1,15 @@
-const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+function apiBase(): string {
+  return (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+}
 
 export function apiUrl(path: string): string {
+  const API = apiBase();
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${API}/api${p}`;
 }
 
 export function wsUrl(token: string): string {
-  const base = API.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+  const base = apiBase().replace(/^http:/, "ws:").replace(/^https:/, "wss:");
   return `${base}/api/ws?token=${encodeURIComponent(token)}`;
 }
 
